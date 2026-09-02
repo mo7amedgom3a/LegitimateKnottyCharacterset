@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+}
+
+:root {
+  --background: 220 33% 97%;
+  --foreground: 222 47% 11%;
+  --border: 214 26% 88%;
+  --input: 214 26% 88%;
+  --ring: 239 84% 67%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 230 32% 94%;
+  --secondary-foreground: 229 34% 27%;
+  --muted: 220 23% 94%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 188 76% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 39%;
+  --warning: 35 92% 46%;
+  --info: 199 89% 48%;
+  --app-font-sans: 'IBM Plex Sans Arabic', sans-serif;
+  --app-font-mono: 'JetBrains Mono', monospace;
+  --radius: 0.75rem;
+  --shadow-card: 0 12px 32px hsl(222 47% 11% / 0.045);
+  --shadow-float: 0 18px 45px hsl(243 75% 20% / 0.14);
+}
+
+.dark {
+  --background: 224 35% 9%;
+  --foreground: 220 20% 95%;
+  --border: 220 20% 19%;
+  --input: 220 20% 19%;
+  --card: 224 31% 13%;
+  --card-foreground: 220 20% 95%;
+  --popover: 224 31% 13%;
+  --popover-foreground: 220 20% 95%;
+  --secondary: 226 25% 19%;
+  --secondary-foreground: 220 20% 95%;
+  --muted: 226 25% 18%;
+  --muted-foreground: 220 11% 63%;
+  --primary: 239 84% 67%;
+  --primary-foreground: 224 35% 9%;
+  --accent: 188 76% 47%;
+  --accent-foreground: 224 35% 9%;
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { background: hsl(var(--background)); }
+  body { @apply font-sans antialiased bg-background text-foreground; margin: 0; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+}
+
+@layer utilities {
+  .font-mono { font-family: var(--app-font-mono); }
+  .text-balance { text-wrap: balance; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+}
+
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+
+.app-shell { min-height: 100dvh; background: hsl(var(--background)); }
+.sidebar-glow { background: radial-gradient(circle at 20% 7%, hsl(243 75% 59% / .2), transparent 28%), hsl(229 44% 16%); }
+.page-enter { animation: page-enter .35s ease-out both; }
+.stagger-1 { animation-delay: .06s; }
+.stagger-2 { animation-delay: .12s; }
+.stagger-3 { animation-delay: .18s; }
+.stagger-4 { animation-delay: .24s; }
+@keyframes page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+.pulse-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+
+.data-row { transition: background-color .18s ease, transform .18s ease; }
+.data-row:hover { background: hsl(243 75% 59% / .035); }
+.nav-item { transition: background-color .18s ease, color .18s ease, padding .18s ease; }
+.card-lift { box-shadow: var(--shadow-card); transition: box-shadow .2s ease, transform .2s ease; }
+.card-lift:hover { box-shadow: var(--shadow-float); transform: translateY(-1px); }
+.hairline { border-color: hsl(var(--border) / .8); }

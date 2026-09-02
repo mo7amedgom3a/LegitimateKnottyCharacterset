@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "LMS Admin Dashboard"
+description = "A polished RTL-first prototype for managing an enterprise learning platform, including courses, curriculum, sales, B2B requests, affiliates, and support tickets."
+version = "1.0.0"
+id = "artifacts/lms-admin-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19668
+
+[services.development]
+run = "pnpm --filter @workspace/lms-admin-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/lms-admin-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/lms-admin-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19668"
+BASE_PATH = "/"
