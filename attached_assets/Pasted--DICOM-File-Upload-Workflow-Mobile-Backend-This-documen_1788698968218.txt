@@ -1,0 +1,326 @@
+
+# DICOM File Upload Workflow (Mobile ↔ Backend)
+
+This document describes a **3‑step lifecycle** for uploading DICOM (`.dcm`) files from a React Native mobile application to a cloud storage (S3/R2) while tracking metadata in a backend database. The backend is implemented in **PHP** using the AWS SDK, and the frontend uses **React Native** with `fetch`.
+
+----------
+
+## Overview
+
+1.  **Initiate** – The mobile app requests a presigned upload URL. The backend creates a database record with status `PENDING` and returns the URL.
+    
+2.  **Upload** – The mobile app streams the file directly to the storage service using the presigned URL.
+    
+3.  **Confirm** – After the upload finishes, the mobile app notifies the backend. The backend verifies the file’s existence in storage and updates the record to `COMPLETED` (or `FAILED` if something went wrong).
+    
+
+This approach ensures:
+
+-   No file data passes through your backend (reduces load and cost).
+    
+-   You have a reliable audit trail of every upload.
+    
+-   Orphaned or failed uploads can be cleaned up later.
+    
+
+----------
+
+## Database Schema
+
+A `files` table (or collection) is needed to track each upload. Example migration using Laravel’s schema builder:
+
+```php
+
+Schema::create('files', function (Blueprint $table) {
+ $table->uuid('id')->primary();
+ $table->string('name');
+ $table->string('key');          // storage key (path)
+ $table->unsignedBigInteger('size');
+ $table->string('mime_type');
+ $table->enum('status', ['PENDING', 'COMPLETED', 'FAILED', 'VERIFICATION_FAILED']);
+ $table->string('e_tag')->nullable();
+ $table->unsignedBigInteger('actual_size')->nullable();
+ $table->timestamps();
+});
+```
+----------
+
+## Backend Endpoints (PHP)
+
+We use the official **AWS SDK for PHP** (`aws/aws-sdk-php`). Install it via Composer:
+
+bash
+
+composer require aws/aws-sdk-php
+
+### 1. `POST /api/upload/init` – Get Presigned URL
+
+This endpoint creates a `PENDING` record and returns a presigned PUT URL to the client.
+
+```php
+
+<?php
+use Aws\S3\S3Client;
+use Aws\S3\Exception\S3Exception;
+use Ramsey\Uuid\Uuid;
+// Assume you have a database connection and an S3 client instance
+$s3Client = new S3Client([
+ 'version' => 'latest',
+ 'region'  => 'us-east-1',
+ 'endpoint' => 'https://your-bucket-endpoint', // for R2 or custom S3
+ 'credentials' => [
+ 'key'    => getenv('AWS_ACCESS_KEY_ID'),
+ 'secret' => getenv('AWS_SECRET_ACCESS_KEY'),
+ ],
+]);
+function handleInitUpload($request) {
+ global $s3Client, $db;
+ $fileName = $request['fileName'];
+ $fileSize = $request['fileSize'];
+ $contentType = $request['contentType'] ?? 'application/dicom';
+ $fileId = Uuid::uuid4()->toString();
+ $storageKey = "dicom/{$fileId}-{$fileName}";
+ // 1. Insert PENDING record
+ $db->table('files')->insert([
+ 'id'         => $fileId,
+ 'name'       => $fileName,
+ 'key'        => $storageKey,
+ 'size'       => $fileSize,
+ 'mime_type'  => $contentType,
+ 'status'     => 'PENDING',
+ 'created_at' => now(),
+ 'updated_at' => now(),
+ ]);
+ // 2. Generate presigned PUT URL (valid for 1 hour)
+ $command = $s3Client->getCommand('PutObject', [
+ 'Bucket'     => getenv('S3_BUCKET'),
+ 'Key'        => $storageKey,
+ 'ContentType' => $contentType,
+ ]);
+ $uploadUrl = $s3Client->createPresignedRequest($command, '+1 hour')->getUri();
+ return response()->json([
+ 'fileId'     => $fileId,
+ 'uploadUrl'  => (string) $uploadUrl,
+ 'storageKey' => $storageKey,
+ ]);
+}
+```
+----------
+
+### 2. `POST /api/upload/complete` – Confirm and Verify
+
+The mobile app calls this endpoint after the upload attempt. The backend verifies the file’s existence in S3 using `HeadObject` and updates the record.
+
+```php
+
+<?php
+use Aws\S3\S3Client;
+use Aws\S3\Exception\S3Exception;
+function handleCompleteUpload($request) {
+ global $s3Client, $db;
+ $fileId = $request['fileId'];
+ $status = $request['status']; // 'SUCCESS' or 'FAILED'
+ // Retrieve the record
+ $file = $db->table('files')->where('id', $fileId)->first();
+ if (!$file) {
+ return response()->json(['error' => 'File not found'], 404);
+ }
+ if ($status === 'SUCCESS') {
+ // Verify the file actually exists in S3
+ try {
+ $result = $s3Client->headObject([
+ 'Bucket' => getenv('S3_BUCKET'),
+ 'Key'    => $file->key,
+ ]);
+ // Update to COMPLETED with ETag and actual size
+ $db->table('files')
+ ->where('id', $fileId)
+ ->update([
+ 'status'      => 'COMPLETED',
+ 'e_tag'       => $result['ETag'],
+ 'actual_size' => $result['ContentLength'],
+ 'updated_at'  => now(),
+ ]);
+ return response()->json(['success' => true]);
+ } catch (S3Exception $e) {
+ // File not found or other S3 error
+ $db->table('files')
+ ->where('id', $fileId)
+ ->update([
+ 'status'     => 'VERIFICATION_FAILED',
+ 'updated_at' => now(),
+ ]);
+ return response()->json(['error' => 'File not found in storage'], 400);
+ }
+ } else {
+ // Upload reported as FAILED
+ $db->table('files')
+ ->where('id', $fileId)
+ ->update([
+ 'status'     => 'FAILED',
+ 'updated_at' => now(),
+ ]);
+ return response()->json(['success' => true]);
+ }
+}
+```
+----------
+
+## React Native Mobile Client
+
+The mobile app uses the standard `fetch` API (or `axios`) to:
+
+1.  Call `/api/upload/init` to get the presigned URL.
+    
+2.  Upload the file directly to that URL using a `PUT` request.
+    
+3.  Call `/api/upload/complete` with the outcome.
+    
+
+**Important:** React Native’s `fetch` can handle binary data (Blob/File). If you are using `react-native-fs` or `expo-file-system`, you can also stream the file, but the simplest approach is to use a `FormData` or a `Blob` with `PUT`. The example below assumes you have a `File` object (e.g., from `react-native-document-picker`).
+
+### Upload Function
+
+```javascript
+
+import { Platform } from 'react-native';
+async function uploadFileWithTracking(file) {
+ // file should be an object with: { name, size, type, uri }
+ try {
+ // Step 1: Initiate
+ const initResponse = await fetch('https://your-backend.com/api/upload/init', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ fileName: file.name,
+ fileSize: file.size,
+ contentType: file.type || 'application/dicom',
+ }),
+ });
+ const { fileId, uploadUrl } = await initResponse.json();
+ // Step 2: Upload directly to S3/R2
+ // In React Native, we need to convert the file URI to a Blob.
+ // For simplicity, we use fetch with the file URI as body.
+ // Note: On React Native, you can pass the file URI directly to fetch body
+ // if you set the correct headers, but it's safer to use a Blob/FormData.
+ // Here we assume the file object has a 'uri' property.
+ const uploadHeaders = {
+ 'Content-Type': file.type || 'application/dicom',
+ };
+ // On iOS, you might need to read the file as base64 and convert, but for
+ // simplicity we use the URI. For larger files, consider using streaming libraries.
+ // A common approach is to use react-native-fs to read the file as base64,
+ // then construct a Blob, but for brevity we'll use the URI directly.
+ // However, fetch with PUT and a file URI may not work on all platforms.
+ // A more robust method is to use XMLHttpRequest with a Blob.
+ // We'll show a version using XMLHttpRequest below.
+ // Using fetch with Blob (requires reading file)
+ // If you have the file content as base64 or array buffer, you can create a Blob.
+ // For this example, we'll assume you have a function getFileBlob(fileUri) that returns a Blob.
+ // For demonstration, we'll use a simple approach with fetch and the file URI:
+ const uploadResponse = await fetch(uploadUrl, {
+ method: 'PUT',
+ headers: uploadHeaders,
+ body: await getFileBlob(file.uri), // you need to implement getFileBlob
+ });
+ if (!uploadResponse.ok) {
+ throw new Error('Upload to storage failed');
+ }
+ // Step 3: Confirm success
+ await fetch('https://your-backend.com/api/upload/complete', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ fileId, status: 'SUCCESS' }),
+ });
+ console.log('Upload completed and metadata updated!');
+ } catch (error) {
+ // Mark as FAILED
+ await fetch('https://your-backend.com/api/upload/complete', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ fileId, status: 'FAILED', error: error.message }),
+ });
+ console.error('Upload failed:', error);
+ }
+}
+```
+### Helper to Get a Blob from File URI
+
+React Native does not have a built-in `Blob` constructor that accepts a URI. You can use libraries like `react-native-fs` or `expo-file-system` to read the file as base64 and then create a Blob. Here’s a simple implementation using `react-native-fs`:
+
+```javascript
+
+import RNFS from 'react-native-fs';
+async function getFileBlob(uri) {
+ // Read file as base64
+ const base64 = await RNFS.readFile(uri, 'base64');
+ // Convert base64 to binary string
+ const binary = atob(base64);
+ // Create an array buffer
+ const arrayBuffer = new ArrayBuffer(binary.length);
+ const uint8Array = new Uint8Array(arrayBuffer);
+ for (let i = 0; i < binary.length; i++) {
+ uint8Array[i] = binary.charCodeAt(i);
+ }
+ // Create a Blob (React Native supports Blob)
+ return new Blob([arrayBuffer], { type: 'application/dicom' });
+}
+```
+Alternatively, you can use `XMLHttpRequest` with a `Blob` from the file system. The exact implementation depends on your React Native environment (Expo, bare, etc.).
+
+----------
+
+## Complete Workflow Diagram
+```mermaid
+sequenceDiagram
+    participant Mobile as React Native App
+    participant Backend as PHP Backend
+    participant Storage as S3/R2
+
+    Mobile->>Backend: POST /api/upload/init
+    Backend->>Database: INSERT PENDING record
+    Backend->>Storage: Generate presigned PUT URL
+    Backend-->>Mobile: fileId, uploadUrl
+
+    Mobile->>Storage: PUT file to uploadUrl
+    Storage-->>Mobile: 200 OK
+
+    Mobile->>Backend: POST /api/upload/complete (SUCCESS)
+    Backend->>Storage: HEAD Object
+    Storage-->>Backend: 200 (exists)
+    Backend->>Database: UPDATE status=COMPLETED
+    Backend-->>Mobile: success
+    
+```
+
+## Error Handling and Edge Cases
+
+-   **Network failure during upload** – The mobile app will catch the error and call `/complete` with `FAILED`, ensuring the database record is updated.
+    
+-   **Storage verification fails** – If the `HEAD` request returns an error (e.g., 404), the backend sets the status to `VERIFICATION_FAILED`. You can later run a cleanup job for such records.
+    
+-   **Expired presigned URL** – The URL is valid for 1 hour (adjust as needed). If it expires, the upload will fail; the app should handle this by retrying the whole process.
+    
+-   **Duplicate file IDs** – Use UUID to guarantee uniqueness.
+    
+-   **Database update conflicts** – Use transactions or optimistic locking if multiple requests might update the same record.
+    
+
+----------
+
+## Additional Considerations
+
+-   **Security** – Always authenticate the user before allowing uploads. Use signed requests (e.g., JWT) and restrict bucket permissions to only the required actions.
+    
+-   **Large files** – For DICOM files that may be large (hundreds of MB), consider using multipart uploads. However, the presigned PUT approach works for files up to 5 GB (S3 limit). For larger files, you would need a more complex workflow.
+    
+-   **Background uploads** – In React Native, you may want to use libraries like `react-native-background-fetch` or `expo-background-fetch` to continue uploads when the app is in the background.
+    
+-   **Progress indication** – You can track upload progress using `XMLHttpRequest`’s `onprogress` event, but the simple `fetch` API does not provide progress. Use `XMLHttpRequest` if progress is needed.
+    
+
+----------
+
+## Summary
+
+This 3‑step workflow gives you a robust, serverless-friendly upload mechanism for DICOM files. The PHP backend manages metadata and verification, while the React Native app handles the direct-to-storage upload, keeping your backend free from file handling overhead.
