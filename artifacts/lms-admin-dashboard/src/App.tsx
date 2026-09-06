@@ -17,6 +17,10 @@ import {
 import {
   Link, Route, Switch, Router as WouterRouter, useLocation, useParams
 } from 'wouter';
+import {
+  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
+  PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
 
 const queryClient = new QueryClient();
 
@@ -174,6 +178,140 @@ function Shell({ children }: { children: ReactNode }) {
 function KpiCard({ icon: Icon, label, value, detail, accent, testId }: { icon: typeof BarChart3; label: string; value: string; detail: string; accent: string; testId: string }) {
   return <div data-testid={testId} className="card-lift rounded-lg border border-slate-200/80 bg-white p-5"><div className="flex items-start justify-between"><div className={cx('flex h-10 w-10 items-center justify-center rounded-lg', accent)}><Icon size={19} /></div><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><ArrowUp size={13} />14.2%</span></div><div className="mt-5 text-[26px] font-bold tracking-tight text-slate-900">{value}</div><div className="mt-1 text-sm font-medium text-slate-600">{label}</div><div className="mt-2 text-xs text-slate-400">{detail}</div></div>;
 }
+
+const monthlySales = [
+  { name: 'الدورات', value: 238500, color: '#4f46e5' },
+  { name: 'الباقات', value: 151250, color: '#06b6d4' },
+  { name: 'الاستشارات', value: 65500, color: '#f59e0b' },
+  { name: 'الشركات', value: 30000, color: '#10b981' },
+];
+const dailySales = [
+  { day: 'السبت', value: 18400 },
+  { day: 'الأحد', value: 25600 },
+  { day: 'الإثنين', value: 19800 },
+  { day: 'الثلاثاء', value: 32100 },
+  { day: 'الأربعاء', value: 27400 },
+  { day: 'الخميس', value: 38900 },
+  { day: 'الجمعة', value: 22100 },
+];
+const revenueTrend = [
+  { week: 'الأسبوع 1', revenue: 104200, orders: 82 },
+  { week: 'الأسبوع 2', revenue: 118450, orders: 96 },
+  { week: 'الأسبوع 3', revenue: 126700, orders: 104 },
+  { week: 'الأسبوع 4', revenue: 135900, orders: 118 },
+];
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number; name?: string; color?: string; payload?: { name?: string } }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-right shadow-lg">
+    {label && <div className="mb-1 text-[10px] text-slate-400">{label}</div>}
+    {payload.map((item, index) => <div key={`${item.name}-${index}`} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+      <span>{item.name ?? item.payload?.name}</span>
+      <span className="font-mono">{money(Number(item.value ?? 0))}</span>
+    </div>)}
+  </div>;
+}
+
+function SalesAnalytics() {
+  const totalMonthlySales = monthlySales.reduce((sum, item) => sum + item.value, 0);
+  return <section className="mt-6">
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <div className="text-xs font-semibold tracking-wide text-primary">تحليلات المبيعات</div>
+        <h2 className="mt-1 text-lg font-bold text-slate-800">أداء المبيعات</h2>
+        <p className="mt-1 text-xs text-slate-400">نظرة مركزة على الإيرادات وتوزيعها خلال الشهر الحالي.</p>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">+14.2% عن الشهر السابق</span>
+        <span className="hidden rounded-full bg-slate-100 px-2 py-1 sm:inline-flex">سبتمبر ٢٠٢٦</span>
+      </div>
+    </div>
+    <div className="grid gap-5 xl:grid-cols-[.9fr_1.35fr]">
+      <section data-testid="chart-monthly-sales" className="rounded-lg border border-slate-200/80 bg-white p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800">مبيعات الشهر</h3>
+            <p className="mt-1 text-xs text-slate-400">توزيع الإيرادات حسب مصدر البيع</p>
+          </div>
+          <div className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">الإجمالي</div>
+        </div>
+        <div className="relative mt-2 h-[220px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={monthlySales} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={63} outerRadius={88} paddingAngle={3} stroke="none">
+                {monthlySales.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+              </Pie>
+              <Tooltip content={<ChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="font-mono text-xl font-bold text-slate-800">{Math.round(totalMonthlySales / 1000).toLocaleString('en-US')}K</span>
+            <span className="mt-1 text-[10px] text-slate-400">إيرادات الشهر</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4">
+          {monthlySales.map((item) => <div key={item.name} data-testid={`legend-monthly-sales-${item.name}`} className="flex items-center gap-2 text-xs">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+            <span className="flex-1 text-slate-500">{item.name}</span>
+            <span className="font-mono font-semibold text-slate-700">{Math.round(item.value / totalMonthlySales * 100)}%</span>
+          </div>)}
+        </div>
+      </section>
+      <section data-testid="chart-daily-sales" className="rounded-lg border border-slate-200/80 bg-white p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800">المبيعات حسب الأيام</h3>
+            <p className="mt-1 text-xs text-slate-400">الإيرادات اليومية بالريال السعودي</p>
+          </div>
+          <div className="rounded-md bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700">آخر ٧ أيام</div>
+        </div>
+        <div className="mt-5 h-[265px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dailySales} margin={{ top: 8, right: 2, left: -14, bottom: 0 }} barCategoryGap="28%">
+              <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(value) => `${Math.round(value / 1000)}K`} />
+              <Tooltip content={<ChartTooltip />} cursor={{ fill: '#eef2ff' }} />
+              <Bar dataKey="value" name="المبيعات" fill="#4f46e5" radius={[5, 5, 0, 0]} maxBarSize={34} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+          <span className="text-slate-400">متوسط اليوم</span>
+          <span className="font-mono font-semibold text-slate-700">{money(Math.round(dailySales.reduce((sum, item) => sum + item.value, 0) / dailySales.length))}</span>
+        </div>
+      </section>
+    </div>
+    <section data-testid="chart-revenue-trend" className="mt-5 rounded-lg border border-slate-200/80 bg-white p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="font-bold text-slate-800">اتجاه الإيرادات والطلبات</h3>
+          <p className="mt-1 text-xs text-slate-400">نمو أسبوعي يوضح العلاقة بين قيمة المبيعات وعدد الطلبات.</p>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-2"><i className="h-2 w-2 rounded-full bg-indigo-500" />الإيرادات</span>
+          <span className="flex items-center gap-2"><i className="h-2 w-2 rounded-full bg-cyan-500" />الطلبات</span>
+        </div>
+      </div>
+      <div className="mt-4 h-[220px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={revenueTrend} margin={{ top: 8, right: 2, left: -14, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+            <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
+            <YAxis yAxisId="revenue" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(value) => `${Math.round(value / 1000)}K`} />
+            <YAxis yAxisId="orders" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+            <Tooltip content={<ChartTooltip />} />
+            <Legend verticalAlign="top" height={0} />
+            <Line yAxisId="revenue" type="monotone" dataKey="revenue" name="الإيرادات" stroke="#4f46e5" strokeWidth={3} dot={{ r: 4, fill: '#4f46e5', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+            <Line yAxisId="orders" type="monotone" dataKey="orders" name="الطلبات" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 3, fill: '#06b6d4', strokeWidth: 2, stroke: '#fff' }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  </section>;
+}
+
 function DashboardPage({ onQuickAdd }: { onQuickAdd: (type: 'course' | 'coupon' | 'b2b') => void }) {
   const enrollments = [{ name: 'نورة عبدالعزيز', course: 'تحليل البيانات واستخراج الأنماط', amount: 850, time: 'منذ 12 دقيقة' }, { name: 'شركة مدار الصحية', course: 'باقة التسويق والتجارة الإلكترونية', amount: 1499, time: 'منذ 48 دقيقة' }, { name: 'محمد القحطاني', course: 'مهارات البيع الاستشاري', amount: 690, time: 'منذ ساعة' }];
   return <div className="page-enter"><PageHeader eyebrow="مركز العمليات / اليوم، ٢ سبتمبر ٢٠٢٦" title="صباح الخير، سارة" description="هذه صورة سريعة لأداء منصة مَدار وما يحتاج إلى انتباهك اليوم." action={<Button variant="secondary" testId="button-refresh-dashboard"><RefreshCw size={15} />تحديث البيانات</Button>} />
@@ -183,6 +321,7 @@ function DashboardPage({ onQuickAdd }: { onQuickAdd: (type: 'course' | 'coupon' 
       [BookOpen, 'الدورات المنشورة', dashboardStats.totalCourses.toString(), 'من أصل 71 دورة', 'bg-violet-50 text-violet-600', 'kpi-courses'],
       [LifeBuoy, 'تذاكر تحتاج متابعة', dashboardStats.pendingTickets.toString(), '3 عالية الأولوية', 'bg-rose-50 text-rose-600', 'kpi-tickets'],
     ].map(([Icon, label, value, detail, accent, id]) => <KpiCard key={id as string} icon={Icon as typeof BarChart3} label={label as string} value={value as string} detail={detail as string} accent={accent as string} testId={id as string} />)}</div>
+    <SalesAnalytics />
     <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_.9fr]"><section className="rounded-lg border border-slate-200/80 bg-white"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-800">آخر عمليات التسجيل</h2><p className="mt-1 text-xs text-slate-400">المبيعات التي تمت مؤخراً عبر المنصة</p></div><Link href="/sales" data-testid="link-view-sales" className="text-xs font-semibold text-primary hover:underline">عرض كل العمليات <ArrowLeft className="mr-1 inline" size={13} /></Link></div><div className="divide-y divide-slate-100">{enrollments.map((item, index) => <div key={item.name} data-testid={`row-enrollment-${index}`} className="data-row flex items-center gap-3 px-5 py-4"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700">{initials(item.name)}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold text-slate-800">{item.name}</div><div className="mt-1 truncate text-xs text-slate-400">{item.course}</div></div><div className="text-left"><div className="font-mono text-xs font-semibold text-slate-700">{money(item.amount)}</div><div className="mt-1 text-[10px] text-slate-400">{item.time}</div></div></div>)}</div></section>
       <section className="rounded-lg border border-slate-200/80 bg-white"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-800">تحتاج تدخلاً سريعاً</h2><p className="mt-1 text-xs text-slate-400">تذاكر لم يتم حلها بعد</p></div><Link href="/tickets" data-testid="link-view-tickets" className="text-xs font-semibold text-primary hover:underline">كل التذاكر</Link></div><div className="space-y-2 p-3">{ticketsSeed.slice(0, 3).map((ticket) => <Link href="/tickets" key={ticket.id} data-testid={`card-urgent-ticket-${ticket.id}`} className="block rounded-md p-3 transition-colors hover:bg-slate-50"><div className="flex items-start gap-3"><div className={cx('mt-1 h-2 w-2 rounded-full', ticket.priority === 'high' ? 'bg-rose-500' : 'bg-amber-500')} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold text-slate-700">{ticket.title}</div><div className="mt-1 text-xs text-slate-400">{ticket.user.name} · {ticket.id}</div></div><ChevronLeft size={15} className="text-slate-300" /></div></Link>)}</div></section></div>
     <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.1fr]"><section className="rounded-lg border border-slate-200/80 bg-white p-5"><div className="flex items-center justify-between"><div><h2 className="font-bold text-slate-800">صحة المنصة</h2><p className="mt-1 text-xs text-slate-400">مراقبة الأنظمة والخدمات الأساسية</p></div><Badge tone="success"><span className="pulse-dot h-1.5 w-1.5 rounded-full bg-emerald-500" />كل الأنظمة تعمل</Badge></div><div className="mt-6 grid grid-cols-3 gap-3">{[['المحتوى', '99.8%', 'bg-indigo-500'], ['الدفع', '100%', 'bg-emerald-500'], ['الإشعارات', '98.4%', 'bg-cyan-500']].map(([name, value, color]) => <div key={name} className="rounded-md bg-slate-50 p-3"><div className="text-xs text-slate-500">{name}</div><div className="mt-2 font-mono text-lg font-semibold text-slate-800">{value}</div><div className="mt-2 h-1 rounded-full bg-slate-200"><div className={cx('h-1 rounded-full', color)} style={{ width: value }} /></div></div>)}</div></section><section className="rounded-lg border border-slate-200/80 bg-white p-5"><div className="flex items-center gap-2"><Zap size={18} className="text-amber-500" /><div><h2 className="font-bold text-slate-800">إجراءات سريعة</h2><p className="mt-1 text-xs text-slate-400">اختصر الطريق إلى المهام المتكررة</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-3">{[['course', 'دورة جديدة', BookOpen], ['coupon', 'كوبون خصم', Percent], ['b2b', 'عميل شركات', Building2]].map(([type, label, Icon]) => <button key={type as string} onClick={() => onQuickAdd(type as 'course' | 'coupon' | 'b2b')} data-testid={`button-quick-${type}`} className="group rounded-md border border-slate-200 p-3 text-right transition-all hover:border-primary/30 hover:bg-primary/5"><div className="mb-5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/8 text-primary"><Icon size={16} /></div><div className="text-sm font-semibold text-slate-700">إضافة {label as string}</div><ArrowLeft size={14} className="mt-2 text-slate-300 transition-transform group-hover:-translate-x-1 group-hover:text-primary" /></button>)}</div></section></div>
